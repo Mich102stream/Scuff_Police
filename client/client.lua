@@ -103,12 +103,83 @@ RegisterCommand('uncuff', function(source, args, rawCommand)
     end
 end, false)
 
--- Client-Side Logic
+local blip = nil
+local panicButtonCooldown = false
+
 CreateThread(function()
     while true do
-        Wait(0)
+        Wait(1000) -- Check every second
         local player = QBCore.Functions.GetPlayerData()
         if player.job.name == 'police' then
             -- Logic for police job (e.g., blips, markers)
+            if LEO_GPS('gps_tracker') then -- Replace 'gps_tracker' with your item name
+                local playerPed = PlayerPedId()
+                local coords = GetEntityCoords(playerPed)
+                if not blip then
+                    blip = AddBlipForCoord(coords.x, coords.y, coords.z)
+                    SetBlipSprite(blip, 1) -- Change blip sprite as needed
+                    SetBlipColour(blip, 3) -- Change blip color as needed
+                    SetBlipScale(blip, 1.0)
+                    BeginTextCommandSetBlipName("STRING")
+                    AddTextComponentString("Officer")
+                    EndTextCommandSetBlipName(blip)
+                else
+                    SetBlipCoords(blip, coords.x, coords.y, coords.z)
+                end
+            else
+                if blip then
+                    RemoveBlip(blip)
+                    blip = nil
+                end
+            end
+        else
+            if blip then
+                RemoveBlip(blip)
+                blip = nil
+            end
         end
     end
+end)
+
+RegisterCommand('panic', function()
+    if not panicButtonCooldown then
+        local player = QBCore.Functions.GetPlayerData()
+        if player.job.name == 'police' then
+            local playerPed = PlayerPedId()
+            local coords = GetEntityCoords(playerPed)
+            TriggerServerEvent('police:server:PanicButton', coords)
+            QBCore.Functions.Notify('Panic button activated!', 'error')
+            panicButtonCooldown = true
+            SetTimeout(60000, function() -- 1 minute cooldown
+                panicButtonCooldown = false
+            end)
+        else
+            QBCore.Functions.Notify('You are not a police officer!', 'error')
+        end
+    else
+        QBCore.Functions.Notify('Panic button is on cooldown!', 'error')
+    end
+end, false)
+
+RegisterNetEvent('police:client:PanicButtonAlert', function(coords)
+    local blip = AddBlipForCoord(coords.x, coords.y, coords.z)
+    SetBlipSprite(blip, 161)
+    SetBlipScale(blip, 1.2)
+    SetBlipColour(blip, 1)
+    BeginTextCommandSetBlipName("STRING")
+    AddTextComponentString("Panic Button")
+    EndTextCommandSetBlipName(blip)
+    PlaySoundFrontend(-1, "TIMER_STOP", "HUD_MINI_GAME_SOUNDSET", 1)
+    Wait(60000) -- Blip lasts for 1 minute
+    RemoveBlip(blip)
+end)
+
+function LEO_GPS(itemName)
+    local player = QBCore.Functions.GetPlayerData()
+    for _, item in pairs(player.items) do
+        if item.name == itemName and item.metadata and item.metadata.turnedOn then
+            return true
+        end
+    end
+    return false
+end
